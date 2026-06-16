@@ -1,7 +1,7 @@
 """Command-line invoice generator.
 
 Fills the three date/number fields in a Word template (``template.docx``) and
-produces one .docx per invoice, optionally converting each to PDF.
+produces one .docx per invoice, then converts each to PDF with LibreOffice.
 
 The template must contain these three Jinja2 placeholders:
 
@@ -14,8 +14,6 @@ Usage:
     python generate_invoices.py
 """
 
-import contextlib
-import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta
@@ -34,9 +32,9 @@ OUTPUT_DIR = "output"              # Generated files land here.
 INPUT_DATE_FORMAT = "%d/%m/%Y"      # How you type dates:   07/06/2026
 DISPLAY_DATE_FORMAT = "%d %B %Y"    # How they're rendered: 07 June 2026
 
-# Candidate commands for the LibreOffice fallback. The bare names cover a
-# normal PATH install; the absolute path covers a standard macOS app install
-# where `soffice` isn't on PATH.
+# Candidate commands for LibreOffice. The bare names cover a normal PATH
+# install; the absolute path covers a standard macOS app install where
+# `soffice` isn't on PATH.
 LIBREOFFICE_COMMANDS = [
     "soffice",
     "libreoffice",
@@ -85,7 +83,8 @@ def compute_invoice(start_date, start_number, index):
 def render_invoice(template_path, output_dir, number, invoice_date, due_date):
     """Render one invoice to a .docx and return its path."""
     context = {
-        "invoice_number": number,
+        # Shown inside the document as YEAR-NNN, e.g. 2026-016.
+        "invoice_number": f"{invoice_date.year}-{number:03d}",
         "invoice_date": invoice_date.strftime(DISPLAY_DATE_FORMAT),
         "due_date": due_date.strftime(DISPLAY_DATE_FORMAT),
     }
@@ -99,88 +98,37 @@ def render_invoice(template_path, output_dir, number, invoice_date, due_date):
     return out_path
 
 
-# --- PDF conversion --------------------------------------------------------
-# Each converter takes (docx_path, pdf_path) and returns True on success.
-def convert_with_docx2pdf(docx_path, pdf_path):
-    """Convert using docx2pdf, which drives Microsoft Word.
+# --- PDF conversion (LibreOffice) ------------------------------------------
+def find_libreoffice():
+    """Return the path to a usable LibreOffice command, or None if not found."""
+    for command in LIBREOFFICE_COMMANDS:
+        path = shutil.which(command)
+        if path:
+            return path
+    return None
 
-    docx2pdf calls ``sys.exit()`` on failure, which raises ``SystemExit`` — and
-    that is NOT a subclass of ``Exception``, so we must catch it explicitly or
-    it would terminate the whole program. ``KeyboardInterrupt`` is deliberately
-    left uncaught so Ctrl-C still works during a slow Word call.
 
-    Note: Microsoft's newer Mac Word (16.10x and later) dropped AppleScript
-    "save as" support, so docx2pdf simply cannot work there — it'll fail and we
-    fall back to LibreOffice.
+def convert_to_pdf(soffice, docx_path, pdf_path):
+    """Convert ``docx_path`` to ``pdf_path`` using LibreOffice headless.
+
+    LibreOffice always names its output after the input file, so we convert into
+    the target folder and then rename to the desired ``pdf_path``. Returns True
+    on success, False if the conversion fails.
     """
     try:
-        from docx2pdf import convert
-
-        # docx2pdf prints an error dict and a progress bar; silence both so a
-        # failure-then-fallback doesn't clutter our output.
-        with open(os.devnull, "w") as devnull, \
-                contextlib.redirect_stdout(devnull), \
-                contextlib.redirect_stderr(devnull):
-            convert(str(docx_path), str(pdf_path))
-    except (Exception, SystemExit):
+        subprocess.run(
+            [soffice, "--headless", "--convert-to", "pdf",
+             "--outdir", str(pdf_path.parent), str(docx_path)],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError:
         return False
+
+    produced = pdf_path.parent / (docx_path.stem + ".pdf")
+    if produced != pdf_path and produced.exists():
+        produced.replace(pdf_path)
     return pdf_path.exists()
-
-
-def convert_with_libreoffice(docx_path, pdf_path):
-    """Convert using LibreOffice headless, if `soffice`/`libreoffice` is found."""
-    for command in LIBREOFFICE_COMMANDS:
-        if shutil.which(command) is None:
-            continue
-        try:
-            subprocess.run(
-                [command, "--headless", "--convert-to", "pdf",
-                 "--outdir", str(pdf_path.parent), str(docx_path)],
-                check=True,
-                capture_output=True,
-            )
-        except subprocess.CalledProcessError:
-            return False
-        return pdf_path.exists()
-    return False
-
-
-class PdfConverter:
-    """Converts .docx files to PDF, remembering the first tool that works.
-
-    docx2pdf is tried first (it uses Microsoft Word); LibreOffice is the
-    fallback. Once a tool succeeds it's reused for the rest of the run, so we
-    don't relaunch a slow or broken converter for every invoice. If nothing
-    works, the converter gives up quietly and ``gave_up`` becomes True so the
-    caller can report it once.
-    """
-
-    def __init__(self, methods=None):
-        # (name, function) pairs; injectable so the logic can be unit-tested.
-        self._methods = methods or [
-            ("docx2pdf", convert_with_docx2pdf),
-            ("LibreOffice", convert_with_libreoffice),
-        ]
-        self._working = None   # cached (name, func) after the first success
-        self.gave_up = False   # True once we know no converter is available
-
-    def convert(self, docx_path):
-        """Convert ``docx_path`` to a PDF beside it.
-
-        Returns the tool name used, or ``None`` if no converter is available.
-        """
-        if self.gave_up:
-            return None
-        pdf_path = docx_path.with_suffix(".pdf")
-        candidates = [self._working] if self._working else self._methods
-        for name, func in candidates:
-            if func(docx_path, pdf_path):
-                self._working = (name, func)
-                return name
-        # Only conclude "nothing works" while we were still trying all tools.
-        if self._working is None:
-            self.gave_up = True
-        return None
 
 
 # --- Main ------------------------------------------------------------------
@@ -200,31 +148,28 @@ def main():
     output_dir = Path(OUTPUT_DIR)
     output_dir.mkdir(exist_ok=True)
 
-    converter = PdfConverter()
-    pdf_notice_shown = False
-    results = []  # (number, invoice_date, path, pdf_status)
+    soffice = find_libreoffice()
+    if soffice is None:
+        print("\nLibreOffice not found — PDFs will be skipped (.docx files still")
+        print("created). Install it with:  brew install --cask libreoffice\n")
 
+    results = []  # (number, invoice_date, docx_path, pdf_status)
     for index in range(count):
         number, invoice_date, due_date = compute_invoice(start_date, start_number, index)
         docx_path = render_invoice(template_path, output_dir, number, invoice_date, due_date)
 
-        tool = converter.convert(docx_path)
-        if tool:
-            pdf_status = f"pdf via {tool}"
-        else:
-            pdf_status = "docx only"
-            if converter.gave_up and not pdf_notice_shown:
-                print("\nNo PDF converter available — install LibreOffice, or use a")
-                print("Word version with working AppleScript support.")
-                print("Skipping PDFs; the .docx files are ready to use.\n")
-                pdf_notice_shown = True
+        pdf_status = "docx only"
+        if soffice:
+            pdf_path = output_dir / f"{number:03d}.pdf"
+            if convert_to_pdf(soffice, docx_path, pdf_path):
+                pdf_status = pdf_path.name
 
         results.append((number, invoice_date, docx_path, pdf_status))
 
     # --- Summary ----------------------------------------------------------
     print(f"\nGenerated {len(results)} invoice(s) in '{output_dir}/':")
     for number, invoice_date, docx_path, pdf_status in results:
-        print(f"  #{number:03d}  {invoice_date:{DISPLAY_DATE_FORMAT}}  "
+        print(f"  {invoice_date.year}-{number:03d}  {invoice_date:{DISPLAY_DATE_FORMAT}}  "
               f"{docx_path.name}  [{pdf_status}]")
 
 

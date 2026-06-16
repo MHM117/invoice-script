@@ -1,8 +1,9 @@
 # Invoice Generator
 
 A small command-line tool that fills the date and number fields in a Word
-invoice template and produces one `.docx` per invoice — optionally converting
-each to PDF. Handy for issuing a run of weekly invoices (e.g. Net 30) in one go.
+invoice template and produces one `.docx` per invoice, then converts each to PDF
+with LibreOffice. Handy for issuing a run of weekly invoices (e.g. Net 30) in one
+go.
 
 ## What it does
 
@@ -20,14 +21,15 @@ Then, for each invoice (counting from 0):
 | Invoice number | starting number + index                |
 | Due date       | invoice date + `DUE_DAYS` (default 30) |
 
-So a start of `07/06/2026`, number `15`, count `3` produces invoices
-`#015` (07 June 2026), `#016` (14 June 2026), and `#017` (21 June 2026),
-each due 30 days later.
+So a start of `07/06/2026`, number `15`, count `3` produces three invoices for
+07 / 14 / 21 June 2026, each due 30 days later.
 
-Output files are written to `output/`, named like:
+Inside each document the invoice number is shown as **`YEAR-NNN`** (e.g.
+`2026-015`). Output files are written to `output/`:
 
 ```
-invoice_015_2026-06-07.docx
+invoice_015_2026-06-07.docx   # intermediate Word file
+015.pdf                       # final PDF (named by zero-padded number)
 ```
 
 `DUE_DAYS` lives in a named constant at the top of `generate_invoices.py` —
@@ -86,29 +88,25 @@ python generate_invoices.py
 Follow the prompts. Bad dates or non-numbers are rejected with a friendly
 re-prompt, so a typo won't crash it.
 
-## PDF conversion (optional)
+## PDF conversion
 
-After saving each `.docx`, the script tries to produce a PDF:
+After saving each `.docx`, the script converts it to PDF using **LibreOffice**
+headless (`soffice --headless --convert-to pdf`). Install it once:
 
-1. **[docx2pdf](https://pypi.org/project/docx2pdf/)** — uses Microsoft Word
-   (Windows, or macOS with an older Word).
-2. **LibreOffice** headless (`soffice --convert-to pdf`) — used as a fallback.
+```bash
+brew install --cask libreoffice        # macOS
+```
 
-The first tool that works is reused for the rest of the run. If neither is
-available, the script prints a clear notice and skips PDFs — the `.docx` files
-are still generated. So PDFs are a bonus, never a requirement.
+(On other platforms, install LibreOffice and make sure `soffice` is on your
+`PATH`.) If LibreOffice isn't found, the script prints a clear notice and skips
+PDFs — the `.docx` files are still generated, so PDFs are never a hard
+requirement.
 
-> **macOS + recent Word:** Microsoft's newer Mac Word (16.10x and later)
-> removed AppleScript `save as` support, so `docx2pdf` can no longer drive it —
-> it will fail and the script falls back to LibreOffice. On macOS the reliable,
-> headless option is therefore **LibreOffice**:
->
-> ```bash
-> brew install --cask libreoffice
-> ```
->
-> (On Windows, `docx2pdf` with Microsoft Word works fine and no extra install
-> is needed.)
+> **Why not Microsoft Word?** An earlier version used `docx2pdf` (which drives
+> Word) first. But Microsoft's newer Mac Word (16.10x and later) removed the
+> AppleScript `save as` support it relied on, so it can no longer be scripted to
+> export PDFs. LibreOffice is reliable, headless, and needs no per-run
+> permission prompts, so it's used directly.
 
 ## Files
 
