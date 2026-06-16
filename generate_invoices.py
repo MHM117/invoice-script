@@ -137,7 +137,7 @@ def main():
     if not template_path.exists():
         print(f"Template '{TEMPLATE_FILE}' not found.")
         print("Copy the example and edit it with your details first:")
-        print(f'  cp "template.example.docx" {TEMPLATE_FILE}')
+        print(f"  cp template_example.docx {TEMPLATE_FILE}")
         raise SystemExit(1)
 
     print("Invoice generator\n-----------------")

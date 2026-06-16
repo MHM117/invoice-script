@@ -55,10 +55,10 @@ edited by hand in Word — the script only fills those three fields.
 
 `template.docx` is **deliberately not in this repo** (it's git-ignored) so your
 personal details never get committed. A generic starter,
-**`template.example.docx`**, is included instead.
+**`template_example.docx`**, is included instead.
 
 ```bash
-cp "template.example.docx" template.docx
+cp template_example.docx template.docx
 ```
 
 Then open `template.docx` in Word and replace the `[bracketed]` fields with your
@@ -113,7 +113,7 @@ requirement.
 | File                    | Purpose                                              |
 | ----------------------- | ---------------------------------------------------- |
 | `generate_invoices.py`  | The script.                                          |
-| `template.example.docx` | Generic template to copy and personalise.            |
+| `template_example.docx` | Generic template to copy and personalise.            |
 | `template.docx`         | Your personal template (git-ignored; you create it). |
 | `requirements.txt`      | Python dependencies.                                 |
 | `output/`               | Generated invoices (git-ignored).                    |
