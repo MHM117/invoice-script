@@ -91,11 +91,24 @@ re-prompt, so a typo won't crash it.
 After saving each `.docx`, the script tries to produce a PDF:
 
 1. **[docx2pdf](https://pypi.org/project/docx2pdf/)** — uses Microsoft Word
-   (Windows or macOS with Word installed).
+   (Windows, or macOS with an older Word).
 2. **LibreOffice** headless (`soffice --convert-to pdf`) — used as a fallback.
 
-If neither is available, it prints a clear notice and skips PDFs — the `.docx`
-files are still generated. So PDFs are a bonus, never a requirement.
+The first tool that works is reused for the rest of the run. If neither is
+available, the script prints a clear notice and skips PDFs — the `.docx` files
+are still generated. So PDFs are a bonus, never a requirement.
+
+> **macOS + recent Word:** Microsoft's newer Mac Word (16.10x and later)
+> removed AppleScript `save as` support, so `docx2pdf` can no longer drive it —
+> it will fail and the script falls back to LibreOffice. On macOS the reliable,
+> headless option is therefore **LibreOffice**:
+>
+> ```bash
+> brew install --cask libreoffice
+> ```
+>
+> (On Windows, `docx2pdf` with Microsoft Word works fine and no extra install
+> is needed.)
 
 ## Files
 
