@@ -8,6 +8,9 @@ output/
 # Editor / tooling
 .claude/
 
+# Local project notes for Claude (not for publishing)
+SUMMARY.md
+
 # Python
 .venv/
 __pycache__/
