@@ -1,0 +1,17 @@
+# Your personal working template — keep your real name/address/bank off GitHub.
+# The script reads this file; copy template.example.docx to it and edit locally.
+template.docx
+
+# Generated invoices
+output/
+
+# Editor / tooling
+.claude/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
